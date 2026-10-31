@@ -5,22 +5,17 @@ import android.view.SurfaceHolder
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Color
+import android.graphics.Typeface
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.util.Log
-import android.widget.Toast
 
 class ReplicantWallpaperService : WallpaperService() {
 
     override fun onCreateEngine(): Engine {
-        Log.i("ReplicantWallpaper", "Wallpaper engine created")
-        Toast.makeText(
-            this,
-            "Replicant wallpaper engine started",
-            Toast.LENGTH_SHORT
-        ).show()
+        Log.i("ReplicantWallpaper", "ENGINE CREATED")
         return ReplicantEngine()
     }
 
@@ -35,15 +30,24 @@ class ReplicantWallpaperService : WallpaperService() {
         }
 
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
         private var dx = 0f
         private var dy = 0f
         private var visible = false
         private var surfaceReady = false
 
+        override fun onCreate(holder: SurfaceHolder) {
+            super.onCreate(holder)
+            Log.i(
+                "ReplicantWallpaper",
+                "ENGINE ONCREATE preview=${isPreview}"
+            )
+        }
+
         override fun onSurfaceCreated(holder: SurfaceHolder) {
             super.onSurfaceCreated(holder)
-            Log.i("ReplicantWallpaper", "Surface created")
             surfaceReady = true
+            Log.i("ReplicantWallpaper", "SURFACE CREATED")
             draw()
         }
 
@@ -55,31 +59,37 @@ class ReplicantWallpaperService : WallpaperService() {
         ) {
             super.onSurfaceChanged(holder, format, width, height)
             surfaceReady = true
+            Log.i(
+                "ReplicantWallpaper",
+                "SURFACE CHANGED ${width}x${height}"
+            )
+            draw()
+        }
+
+        override fun onSurfaceRedrawNeeded(holder: SurfaceHolder) {
+            super.onSurfaceRedrawNeeded(holder)
+            surfaceReady = true
+            Log.i("ReplicantWallpaper", "REDRAW REQUESTED")
             draw()
         }
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
-            Log.i("ReplicantWallpaper", "Surface destroyed")
+            Log.i("ReplicantWallpaper", "SURFACE DESTROYED")
             surfaceReady = false
             super.onSurfaceDestroyed(holder)
         }
 
         override fun onVisibilityChanged(isVisible: Boolean) {
             super.onVisibilityChanged(isVisible)
+
             visible = isVisible
 
             Log.i(
                 "ReplicantWallpaper",
-                "Wallpaper visibility changed: $isVisible"
+                "VISIBILITY=$isVisible preview=${isPreview}"
             )
 
             if (visible) {
-                Toast.makeText(
-                    this@ReplicantWallpaperService,
-                    "Replicant wallpaper is now visible",
-                    Toast.LENGTH_SHORT
-                ).show()
-
                 rotation?.let {
                     sensors.registerListener(
                         this,
@@ -113,7 +123,7 @@ class ReplicantWallpaperService : WallpaperService() {
         ) {}
 
         override fun onDestroy() {
-            Log.i("ReplicantWallpaper", "Wallpaper engine destroyed")
+            Log.i("ReplicantWallpaper", "ENGINE DESTROYED")
             visible = false
             surfaceReady = false
             sensors.unregisterListener(this)
@@ -121,7 +131,13 @@ class ReplicantWallpaperService : WallpaperService() {
         }
 
         private fun draw() {
-            if (!surfaceReady || !visible) return
+            if (!surfaceReady || !visible) {
+                Log.i(
+                    "ReplicantWallpaper",
+                    "DRAW SKIPPED surface=$surfaceReady visible=$visible"
+                )
+                return
+            }
 
             var canvas: Canvas? = null
 
@@ -131,47 +147,60 @@ class ReplicantWallpaperService : WallpaperService() {
                 val w = canvas.width.toFloat()
                 val h = canvas.height.toFloat()
 
-                canvas.drawColor(Color.rgb(10, 15, 28))
+                canvas.drawColor(Color.rgb(8, 12, 35))
 
-                paint.color = Color.rgb(25, 42, 68)
+                paint.style = Paint.Style.FILL
+                paint.color = Color.rgb(0, 180, 255)
+
                 canvas.drawCircle(
                     w * (0.5f + dx),
-                    h * (0.42f + dy),
-                    minOf(w, h) * 0.34f,
+                    h * (0.40f + dy),
+                    minOf(w, h) * 0.28f,
                     paint
                 )
 
-                paint.color = Color.rgb(55, 85, 115)
+                paint.color = Color.rgb(255, 40, 180)
+
                 canvas.drawCircle(
                     w * (0.48f + dx * 1.5f),
-                    h * (0.4f + dy * 1.5f),
-                    minOf(w, h) * 0.2f,
+                    h * (0.42f + dy * 1.5f),
+                    minOf(w, h) * 0.15f,
                     paint
                 )
 
                 paint.color = Color.WHITE
-                paint.textSize = maxOf(24f, w * 0.055f)
+                paint.textAlign = Paint.Align.CENTER
+                paint.typeface = Typeface.create(
+                    Typeface.DEFAULT,
+                    Typeface.BOLD
+                )
+                paint.textSize = maxOf(28f, w * 0.065f)
 
                 canvas.drawText(
                     "UNIVERSAL REPLICANT",
-                    36f,
-                    h * 0.82f,
+                    w / 2f,
+                    h * 0.78f,
                     paint
                 )
 
-                paint.textSize = maxOf(16f, w * 0.035f)
+                paint.textSize = maxOf(20f, w * 0.04f)
 
                 canvas.drawText(
-                    "Native wallpaper motion test",
-                    36f,
-                    h * 0.87f,
+                    if (isPreview) "PREVIEW MODE" else "ACTIVE WALLPAPER",
+                    w / 2f,
+                    h * 0.84f,
                     paint
+                )
+
+                Log.i(
+                    "ReplicantWallpaper",
+                    "FRAME DRAWN preview=$isPreview"
                 )
 
             } catch (e: Exception) {
                 Log.e(
                     "ReplicantWallpaper",
-                    "Wallpaper drawing failed",
+                    "DRAW FAILED",
                     e
                 )
             } finally {
@@ -181,7 +210,7 @@ class ReplicantWallpaperService : WallpaperService() {
                     } catch (e: Exception) {
                         Log.e(
                             "ReplicantWallpaper",
-                            "Canvas release failed",
+                            "CANVAS RELEASE FAILED",
                             e
                         )
                     }
