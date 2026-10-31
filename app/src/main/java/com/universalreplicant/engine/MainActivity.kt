@@ -19,6 +19,10 @@ class MainActivity : Activity() {
             ReplicantWallpaperService::class.java
         )
 
+    companion object {
+        private const val PREVIEW_REQUEST = 1001
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -28,68 +32,103 @@ class MainActivity : Activity() {
         }
 
         statusText = TextView(this).apply {
-            text = "UNIVERSAL REPLICANT ENGINE\n\nRun the wallpaper diagnostic."
+            text = "UNIVERSAL REPLICANT ENGINE\n\nReady."
             textSize = 17f
         }
 
         layout.addView(statusText)
 
         layout.addView(Button(this).apply {
-            text = "RUN WALLPAPER DIAGNOSTIC"
+            text = "OPEN WALLPAPER PREVIEW"
 
             setOnClickListener {
-                runDiagnostic()
+                openPreview()
             }
         })
 
         layout.addView(Button(this).apply {
-            text = "OPEN MY WALLPAPER PREVIEW"
+            text = "CHECK WALLPAPER STATUS"
 
             setOnClickListener {
-                try {
-                    val intent = Intent(
-                        WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER
-                    ).putExtra(
-                        WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-                        wallpaperComponent
-                    )
-
-                    startActivity(intent)
-
-                } catch (e: Exception) {
-                    statusText.text =
-                        "Could not open preview:\n${e.message}"
-                }
+                checkWallpaper("Manual status check")
             }
         })
 
         setContentView(layout)
     }
 
-    private fun runDiagnostic() {
+    private fun openPreview() {
         try {
-            val manager = WallpaperManager.getInstance(this)
-
-            val supported = manager.isWallpaperSupported()
-            val allowed = manager.isSetWallpaperAllowed()
-            val active = manager.wallpaperInfo
-
-            val activeText = if (active == null) {
-                "No live wallpaper reported."
-            } else {
-                "Package: ${active.packageName}\n" +
-                "Service: ${active.serviceName}"
-            }
-
             statusText.text =
-                "WALLPAPER DIAGNOSTIC\n\n" +
-                "Wallpaper supported: $supported\n\n" +
-                "Wallpaper changes allowed: $allowed\n\n" +
-                "Currently active:\n$activeText"
+                "Opening Samsung wallpaper preview..."
+
+            val intent = Intent(
+                WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER
+            ).putExtra(
+                WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
+                wallpaperComponent
+            )
+
+            startActivityForResult(
+                intent,
+                PREVIEW_REQUEST
+            )
 
         } catch (e: Exception) {
             statusText.text =
-                "DIAGNOSTIC FAILED\n\n${e.javaClass.simpleName}\n${e.message}"
+                "PREVIEW LAUNCH FAILED\n\n${e.javaClass.simpleName}\n${e.message}"
+        }
+    }
+
+    @Deprecated("Diagnostic result callback")
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?
+    ) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (requestCode == PREVIEW_REQUEST) {
+            val result = when (resultCode) {
+                RESULT_OK -> "RESULT_OK"
+                RESULT_CANCELED -> "RESULT_CANCELED"
+                else -> "RESULT CODE: $resultCode"
+            }
+
+            checkWallpaper(
+                "Samsung preview returned: $result"
+            )
+        }
+    }
+
+    private fun checkWallpaper(message: String) {
+        try {
+            val manager = WallpaperManager.getInstance(this)
+            val active = manager.wallpaperInfo
+
+            val activeDescription = when {
+                active == null ->
+                    "No live wallpaper reported."
+
+                active.packageName == wallpaperComponent.packageName &&
+                active.serviceName == wallpaperComponent.className ->
+                    "UNIVERSAL REPLICANT ENGINE IS ACTIVE."
+
+                else ->
+                    "Another wallpaper is active.\n" +
+                    "Package: ${active.packageName}\n" +
+                    "Service: ${active.serviceName}"
+            }
+
+            statusText.text =
+                "ACTIVATION DIAGNOSTIC\n\n" +
+                "$message\n\n" +
+                activeDescription
+
+        } catch (e: Exception) {
+            statusText.text =
+                "STATUS CHECK FAILED\n\n" +
+                "${e.javaClass.simpleName}\n${e.message}"
         }
     }
 }
