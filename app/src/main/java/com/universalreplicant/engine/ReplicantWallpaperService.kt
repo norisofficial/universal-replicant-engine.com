@@ -11,11 +11,11 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.util.Log
+import android.widget.Toast
 
 class ReplicantWallpaperService : WallpaperService() {
 
     override fun onCreateEngine(): Engine {
-        Log.i("ReplicantWallpaper", "ENGINE CREATED")
         return ReplicantEngine()
     }
 
@@ -38,16 +38,19 @@ class ReplicantWallpaperService : WallpaperService() {
 
         override fun onCreate(holder: SurfaceHolder) {
             super.onCreate(holder)
-            Log.i(
-                "ReplicantWallpaper",
-                "ENGINE ONCREATE preview=${isPreview}"
-            )
+
+            if (!isPreview) {
+                Toast.makeText(
+                    this@ReplicantWallpaperService,
+                    "ACTIVE WALLPAPER ENGINE STARTED",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         }
 
         override fun onSurfaceCreated(holder: SurfaceHolder) {
             super.onSurfaceCreated(holder)
             surfaceReady = true
-            Log.i("ReplicantWallpaper", "SURFACE CREATED")
             draw()
         }
 
@@ -59,35 +62,23 @@ class ReplicantWallpaperService : WallpaperService() {
         ) {
             super.onSurfaceChanged(holder, format, width, height)
             surfaceReady = true
-            Log.i(
-                "ReplicantWallpaper",
-                "SURFACE CHANGED ${width}x${height}"
-            )
             draw()
         }
 
         override fun onSurfaceRedrawNeeded(holder: SurfaceHolder) {
             super.onSurfaceRedrawNeeded(holder)
             surfaceReady = true
-            Log.i("ReplicantWallpaper", "REDRAW REQUESTED")
             draw()
         }
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
-            Log.i("ReplicantWallpaper", "SURFACE DESTROYED")
             surfaceReady = false
             super.onSurfaceDestroyed(holder)
         }
 
         override fun onVisibilityChanged(isVisible: Boolean) {
             super.onVisibilityChanged(isVisible)
-
             visible = isVisible
-
-            Log.i(
-                "ReplicantWallpaper",
-                "VISIBILITY=$isVisible preview=${isPreview}"
-            )
 
             if (visible) {
                 rotation?.let {
@@ -123,7 +114,6 @@ class ReplicantWallpaperService : WallpaperService() {
         ) {}
 
         override fun onDestroy() {
-            Log.i("ReplicantWallpaper", "ENGINE DESTROYED")
             visible = false
             surfaceReady = false
             sensors.unregisterListener(this)
@@ -131,13 +121,7 @@ class ReplicantWallpaperService : WallpaperService() {
         }
 
         private fun draw() {
-            if (!surfaceReady || !visible) {
-                Log.i(
-                    "ReplicantWallpaper",
-                    "DRAW SKIPPED surface=$surfaceReady visible=$visible"
-                )
-                return
-            }
+            if (!surfaceReady || !visible) return
 
             var canvas: Canvas? = null
 
@@ -190,11 +174,6 @@ class ReplicantWallpaperService : WallpaperService() {
                     w / 2f,
                     h * 0.84f,
                     paint
-                )
-
-                Log.i(
-                    "ReplicantWallpaper",
-                    "FRAME DRAWN preview=$isPreview"
                 )
 
             } catch (e: Exception) {
