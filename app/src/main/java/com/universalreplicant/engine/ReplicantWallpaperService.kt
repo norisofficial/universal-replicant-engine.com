@@ -1,17 +1,23 @@
 package com.universalreplicant.engine
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
+import android.graphics.RectF
+import android.net.Uri
 import android.service.wallpaper.WallpaperService
 import android.view.SurfaceHolder
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.Color
-import android.graphics.Typeface
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.content.Context
 import android.util.Log
-import android.widget.Toast
+import kotlin.math.max
+import kotlin.math.min
 
 class ReplicantWallpaperService : WallpaperService() {
 
@@ -19,39 +25,74 @@ class ReplicantWallpaperService : WallpaperService() {
         return ReplicantEngine()
     }
 
-    inner class ReplicantEngine : Engine(), SensorEventListener {
+    private fun loadPhoto(): Bitmap? {
+        val savedUri = getSharedPreferences(
+            "replicant_settings",
+            Context.MODE_PRIVATE
+        ).getString("photo_uri", null) ?: return null
 
-        private val sensors by lazy {
-            getSystemService(SENSOR_SERVICE) as SensorManager
-        }
+        return try {
+            val uri = Uri.parse(savedUri)
 
-        private val rotation by lazy {
-            sensors.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
-        }
-
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-        private var dx = 0f
-        private var dy = 0f
-        private var visible = false
-        private var surfaceReady = false
-
-        override fun onCreate(holder: SurfaceHolder) {
-            super.onCreate(holder)
-
-            if (!isPreview) {
-                Toast.makeText(
-                    this@ReplicantWallpaperService,
-                    "ACTIVE WALLPAPER ENGINE STARTED",
-                    Toast.LENGTH_LONG
-                ).show()
+            val bounds = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
             }
+
+            contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, bounds)
+            }
+
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                return null
+            }
+
+            var sampleSize = 1
+            while (
+                bounds.outWidth / sampleSize > 2048 ||
+                bounds.outHeight / sampleSize > 2048
+            ) {
+                sampleSize *= 2
+            }
+
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+
+            contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, options)
+            }
+        } catch (e: Exception) {
+            Log.e("ReplicantEngine", "Could not load imported photo", e)
+            null
+        }
+    }
+
+    private inner class ReplicantEngine :
+        Engine(), SensorEventListener {
+
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        private val sensorManager =
+            getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        private val accelerometer =
+            sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
+        private var photo: Bitmap? = loadPhoto()
+        private var surfaceReady = false
+        private var visibleNow = false
+
+        private var tiltX = 0f
+        private var tiltY = 0f
+
+        override fun onCreate(surfaceHolder: SurfaceHolder) {
+            super.onCreate(surfaceHolder)
+            Log.i("ReplicantEngine", "Wallpaper engine created")
         }
 
         override fun onSurfaceCreated(holder: SurfaceHolder) {
             super.onSurfaceCreated(holder)
             surfaceReady = true
-            draw()
+            drawFrame()
         }
 
         override fun onSurfaceChanged(
@@ -62,13 +103,11 @@ class ReplicantWallpaperService : WallpaperService() {
         ) {
             super.onSurfaceChanged(holder, format, width, height)
             surfaceReady = true
-            draw()
+            drawFrame()
         }
 
         override fun onSurfaceRedrawNeeded(holder: SurfaceHolder) {
-            super.onSurfaceRedrawNeeded(holder)
-            surfaceReady = true
-            draw()
+            drawFrame()
         }
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
@@ -76,125 +115,133 @@ class ReplicantWallpaperService : WallpaperService() {
             super.onSurfaceDestroyed(holder)
         }
 
-        override fun onVisibilityChanged(isVisible: Boolean) {
-            super.onVisibilityChanged(isVisible)
-            visible = isVisible
+        override fun onVisibilityChanged(visible: Boolean) {
+            visibleNow = visible
 
             if (visible) {
-                rotation?.let {
-                    sensors.registerListener(
+                accelerometer?.let {
+                    sensorManager.registerListener(
                         this,
                         it,
-                        SensorManager.SENSOR_DELAY_UI
+                        SensorManager.SENSOR_DELAY_GAME
                     )
                 }
-                draw()
+                drawFrame()
             } else {
-                sensors.unregisterListener(this)
+                sensorManager.unregisterListener(this)
             }
         }
 
         override fun onSensorChanged(event: SensorEvent) {
-            val matrix = FloatArray(9)
+            if (event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
 
-            SensorManager.getRotationMatrixFromVector(
-                matrix,
-                event.values
-            )
+            tiltX = (event.values[0] / 9.81f).coerceIn(-1f, 1f)
+            tiltY = (event.values[1] / 9.81f).coerceIn(-1f, 1f)
 
-            dx = matrix[2].coerceIn(-0.12f, 0.12f)
-            dy = matrix[5].coerceIn(-0.12f, 0.12f)
-
-            if (visible) draw()
+            drawFrame()
         }
 
-        override fun onAccuracyChanged(
-            sensor: Sensor?,
-            accuracy: Int
-        ) {}
-
-        override fun onDestroy() {
-            visible = false
-            surfaceReady = false
-            sensors.unregisterListener(this)
-            super.onDestroy()
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+            // No action needed.
         }
 
-        private fun draw() {
-            if (!surfaceReady || !visible) return
+        private fun drawFrame() {
+            if (!surfaceReady || !visibleNow) return
 
+            val holder = surfaceHolder
             var canvas: Canvas? = null
 
             try {
-                canvas = surfaceHolder.lockCanvas() ?: return
+                canvas = holder.lockCanvas() ?: return
 
-                val w = canvas.width.toFloat()
-                val h = canvas.height.toFloat()
+                val width = canvas.width.toFloat()
+                val height = canvas.height.toFloat()
 
-                canvas.drawColor(Color.rgb(8, 12, 35))
+                canvas.drawColor(Color.rgb(8, 10, 18))
 
-                paint.style = Paint.Style.FILL
-                paint.color = Color.rgb(0, 180, 255)
+                val bitmap = photo
 
-                canvas.drawCircle(
-                    w * (0.5f + dx),
-                    h * (0.40f + dy),
-                    minOf(w, h) * 0.28f,
-                    paint
-                )
+                if (bitmap == null || bitmap.isRecycled) {
+                    paint.color = Color.WHITE
+                    paint.textAlign = Paint.Align.CENTER
+                    paint.textSize = 38f
 
-                paint.color = Color.rgb(255, 40, 180)
+                    canvas.drawText(
+                        "UNIVERSAL REPLICANT",
+                        width / 2f,
+                        height / 2f,
+                        paint
+                    )
 
-                canvas.drawCircle(
-                    w * (0.48f + dx * 1.5f),
-                    h * (0.42f + dy * 1.5f),
-                    minOf(w, h) * 0.15f,
-                    paint
-                )
+                    paint.textSize = 22f
+                    canvas.drawText(
+                        "Import a photograph in the app",
+                        width / 2f,
+                        height / 2f + 45f,
+                        paint
+                    )
+                } else {
+                    val bitmapWidth = bitmap.width.toFloat()
+                    val bitmapHeight = bitmap.height.toFloat()
 
-                paint.color = Color.WHITE
-                paint.textAlign = Paint.Align.CENTER
-                paint.typeface = Typeface.create(
-                    Typeface.DEFAULT,
-                    Typeface.BOLD
-                )
-                paint.textSize = maxOf(28f, w * 0.065f)
+                    val canvasRatio = width / height
+                    val bitmapRatio = bitmapWidth / bitmapHeight
 
-                canvas.drawText(
-                    "UNIVERSAL REPLICANT",
-                    w / 2f,
-                    h * 0.78f,
-                    paint
-                )
+                    val sourceWidth: Float
+                    val sourceHeight: Float
 
-                paint.textSize = maxOf(20f, w * 0.04f)
+                    if (bitmapRatio > canvasRatio) {
+                        sourceHeight = bitmapHeight
+                        sourceWidth = bitmapHeight * canvasRatio
+                    } else {
+                        sourceWidth = bitmapWidth
+                        sourceHeight = bitmapWidth / canvasRatio
+                    }
 
-                canvas.drawText(
-                    if (isPreview) "PREVIEW MODE" else "ACTIVE WALLPAPER",
-                    w / 2f,
-                    h * 0.84f,
-                    paint
-                )
+                    val extraX = bitmapWidth - sourceWidth
+                    val extraY = bitmapHeight - sourceHeight
 
+                    val maxShiftX = min(extraX / 2f, sourceWidth * 0.025f)
+                    val maxShiftY = min(extraY / 2f, sourceHeight * 0.025f)
+
+                    val shiftX = -tiltX * maxShiftX
+                    val shiftY = tiltY * maxShiftY
+
+                    val left = ((bitmapWidth - sourceWidth) / 2f + shiftX)
+                        .coerceIn(0f, extraX)
+
+                    val top = ((bitmapHeight - sourceHeight) / 2f + shiftY)
+                        .coerceIn(0f, extraY)
+
+                    val source = Rect(
+                        left.toInt(),
+                        top.toInt(),
+                        (left + sourceWidth).toInt().coerceAtMost(bitmap.width),
+                        (top + sourceHeight).toInt().coerceAtMost(bitmap.height)
+                    )
+
+                    val destination = RectF(0f, 0f, width, height)
+
+                    paint.color = Color.WHITE
+                    canvas.drawBitmap(
+                        bitmap,
+                        source,
+                        destination,
+                        paint
+                    )
+                }
             } catch (e: Exception) {
-                Log.e(
-                    "ReplicantWallpaper",
-                    "DRAW FAILED",
-                    e
-                )
+                Log.e("ReplicantEngine", "Wallpaper drawing failed", e)
             } finally {
                 if (canvas != null) {
-                    try {
-                        surfaceHolder.unlockCanvasAndPost(canvas)
-                    } catch (e: Exception) {
-                        Log.e(
-                            "ReplicantWallpaper",
-                            "CANVAS RELEASE FAILED",
-                            e
-                        )
-                    }
+                    holder.unlockCanvasAndPost(canvas)
                 }
             }
+        }
+
+        override fun onDestroy() {
+            sensorManager.unregisterListener(this)
+            super.onDestroy()
         }
     }
 }
