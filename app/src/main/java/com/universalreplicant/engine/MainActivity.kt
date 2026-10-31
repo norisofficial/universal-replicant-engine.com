@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.WallpaperManager
 import android.content.ComponentName
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.widget.Button
 import android.widget.LinearLayout
@@ -20,7 +21,9 @@ class MainActivity : Activity() {
         )
 
     companion object {
-        private const val PREVIEW_REQUEST = 1001
+        private const val PHOTO_REQUEST = 2001
+        private const val PREFS = "replicant_settings"
+        private const val PHOTO_URI = "photo_uri"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,55 +35,81 @@ class MainActivity : Activity() {
         }
 
         statusText = TextView(this).apply {
-            text = "UNIVERSAL REPLICANT ENGINE\n\nReady."
-            textSize = 17f
+            textSize = 18f
+            text = "UNIVERSAL REPLICANT ENGINE\n\n" +
+                "Import a photograph to begin."
         }
 
         layout.addView(statusText)
 
         layout.addView(Button(this).apply {
-            text = "OPEN WALLPAPER PREVIEW"
+            text = "IMPORT PHOTOGRAPH"
 
             setOnClickListener {
-                openPreview()
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "image/*"
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                }
+
+                startActivityForResult(intent, PHOTO_REQUEST)
             }
         })
 
         layout.addView(Button(this).apply {
-            text = "CHECK WALLPAPER STATUS"
+            text = "OPEN WALLPAPER PREVIEW"
 
             setOnClickListener {
-                checkWallpaper("Manual status check")
+                try {
+                    val intent = Intent(
+                        WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER
+                    ).putExtra(
+                        WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
+                        wallpaperComponent
+                    )
+
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    statusText.text =
+                        "Could not open preview:\n${e.message}"
+                }
+            }
+        })
+
+        layout.addView(Button(this).apply {
+            text = "CHECK IMPORTED PHOTOGRAPH"
+
+            setOnClickListener {
+                val uri = getSharedPreferences(
+                    PREFS,
+                    MODE_PRIVATE
+                ).getString(PHOTO_URI, null)
+
+                statusText.text = if (uri == null) {
+                    "No photograph imported yet."
+                } else {
+                    "Photograph imported successfully.\n\n" +
+                    "Ready for the scene-rendering stage."
+                }
             }
         })
 
         setContentView(layout)
-    }
 
-    private fun openPreview() {
-        try {
+        val saved = getSharedPreferences(
+            PREFS,
+            MODE_PRIVATE
+        ).getString(PHOTO_URI, null)
+
+        if (saved != null) {
             statusText.text =
-                "Opening Samsung wallpaper preview..."
-
-            val intent = Intent(
-                WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER
-            ).putExtra(
-                WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-                wallpaperComponent
-            )
-
-            startActivityForResult(
-                intent,
-                PREVIEW_REQUEST
-            )
-
-        } catch (e: Exception) {
-            statusText.text =
-                "PREVIEW LAUNCH FAILED\n\n${e.javaClass.simpleName}\n${e.message}"
+                "UNIVERSAL REPLICANT ENGINE\n\n" +
+                "A photograph is already imported."
         }
     }
 
-    @Deprecated("Diagnostic result callback")
+    @Deprecated("Photo picker result callback")
     override fun onActivityResult(
         requestCode: Int,
         resultCode: Int,
@@ -88,47 +117,39 @@ class MainActivity : Activity() {
     ) {
         super.onActivityResult(requestCode, resultCode, data)
 
-        if (requestCode == PREVIEW_REQUEST) {
-            val result = when (resultCode) {
-                RESULT_OK -> "RESULT_OK"
-                RESULT_CANCELED -> "RESULT_CANCELED"
-                else -> "RESULT CODE: $resultCode"
+        if (requestCode == PHOTO_REQUEST) {
+            if (resultCode != RESULT_OK) {
+                statusText.text = "Photo selection cancelled."
+                return
             }
 
-            checkWallpaper(
-                "Samsung preview returned: $result"
-            )
-        }
-    }
-
-    private fun checkWallpaper(message: String) {
-        try {
-            val manager = WallpaperManager.getInstance(this)
-            val active = manager.wallpaperInfo
-
-            val activeDescription = when {
-                active == null ->
-                    "No live wallpaper reported."
-
-                active.packageName == wallpaperComponent.packageName &&
-                active.serviceName == wallpaperComponent.className ->
-                    "UNIVERSAL REPLICANT ENGINE IS ACTIVE."
-
-                else ->
-                    "Another wallpaper is active.\n" +
-                    "Package: ${active.packageName}\n" +
-                    "Service: ${active.serviceName}"
+            val uri: Uri = data?.data ?: run {
+                statusText.text = "No photograph was selected."
+                return
             }
 
-            statusText.text =
-                "ACTIVATION DIAGNOSTIC\n\n" +
-                "$message\n\n" +
-                activeDescription
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
 
-        } catch (e: Exception) {
-            statusText.text =
-                "STATUS CHECK FAILED\n\n" +
-                "${e.javaClass.simpleName}\n${e.message}"
+                getSharedPreferences(
+                    PREFS,
+                    MODE_PRIVATE
+                ).edit()
+                    .putString(PHOTO_URI, uri.toString())
+                    .apply()
+
+                statusText.text =
+                    "PHOTOGRAPH IMPORTED SUCCESSFULLY!\n\n" +
+                    "Your photograph is saved for the next " +
+                    "scene-rendering development stage."
+
+            } catch (e: Exception) {
+                statusText.text =
+                    "IMPORT FAILED\n\n${e.message}"
+            }
         }
     }
 }
