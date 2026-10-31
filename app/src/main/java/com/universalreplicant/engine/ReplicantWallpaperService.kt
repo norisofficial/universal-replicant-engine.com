@@ -10,10 +10,19 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.util.Log
+import android.widget.Toast
 
 class ReplicantWallpaperService : WallpaperService() {
 
-    override fun onCreateEngine(): Engine = ReplicantEngine()
+    override fun onCreateEngine(): Engine {
+        Log.i("ReplicantWallpaper", "Wallpaper engine created")
+        Toast.makeText(
+            this,
+            "Replicant wallpaper engine started",
+            Toast.LENGTH_SHORT
+        ).show()
+        return ReplicantEngine()
+    }
 
     inner class ReplicantEngine : Engine(), SensorEventListener {
 
@@ -26,7 +35,6 @@ class ReplicantWallpaperService : WallpaperService() {
         }
 
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
         private var dx = 0f
         private var dy = 0f
         private var visible = false
@@ -34,6 +42,7 @@ class ReplicantWallpaperService : WallpaperService() {
 
         override fun onSurfaceCreated(holder: SurfaceHolder) {
             super.onSurfaceCreated(holder)
+            Log.i("ReplicantWallpaper", "Surface created")
             surfaceReady = true
             draw()
         }
@@ -50,14 +59,27 @@ class ReplicantWallpaperService : WallpaperService() {
         }
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
+            Log.i("ReplicantWallpaper", "Surface destroyed")
             surfaceReady = false
             super.onSurfaceDestroyed(holder)
         }
 
         override fun onVisibilityChanged(isVisible: Boolean) {
+            super.onVisibilityChanged(isVisible)
             visible = isVisible
 
+            Log.i(
+                "ReplicantWallpaper",
+                "Wallpaper visibility changed: $isVisible"
+            )
+
             if (visible) {
+                Toast.makeText(
+                    this@ReplicantWallpaperService,
+                    "Replicant wallpaper is now visible",
+                    Toast.LENGTH_SHORT
+                ).show()
+
                 rotation?.let {
                     sensors.registerListener(
                         this,
@@ -91,6 +113,7 @@ class ReplicantWallpaperService : WallpaperService() {
         ) {}
 
         override fun onDestroy() {
+            Log.i("ReplicantWallpaper", "Wallpaper engine destroyed")
             visible = false
             surfaceReady = false
             sensors.unregisterListener(this)
@@ -146,13 +169,21 @@ class ReplicantWallpaperService : WallpaperService() {
                 )
 
             } catch (e: Exception) {
-                Log.e("ReplicantWallpaper", "Wallpaper drawing failed", e)
+                Log.e(
+                    "ReplicantWallpaper",
+                    "Wallpaper drawing failed",
+                    e
+                )
             } finally {
                 if (canvas != null) {
                     try {
                         surfaceHolder.unlockCanvasAndPost(canvas)
                     } catch (e: Exception) {
-                        Log.e("ReplicantWallpaper", "Canvas release failed", e)
+                        Log.e(
+                            "ReplicantWallpaper",
+                            "Canvas release failed",
+                            e
+                        )
                     }
                 }
             }
