@@ -29,14 +29,15 @@ class MainActivity : Activity() {
         }
 
         statusText = TextView(this).apply {
-            text = "Universal Replicant Engine\n\nCheck whether your wallpaper is active."
+            text = "Universal Replicant Engine\n\nChoose how to open your wallpaper."
             textSize = 18f
         }
 
         layout.addView(statusText)
 
         layout.addView(Button(this).apply {
-            text = "Preview / set wallpaper"
+            text = "Open my wallpaper preview"
+
             setOnClickListener {
                 val intent = Intent(
                     WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER
@@ -45,7 +46,19 @@ class MainActivity : Activity() {
                     wallpaperComponent
                 )
 
-                startActivity(intent)
+                openIntent(intent)
+            }
+        })
+
+        layout.addView(Button(this).apply {
+            text = "Open system live wallpaper chooser"
+
+            setOnClickListener {
+                val intent = Intent(
+                    WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER
+                )
+
+                openIntent(intent)
             }
         })
 
@@ -54,10 +67,9 @@ class MainActivity : Activity() {
 
             setOnClickListener {
                 try {
-                    val manager =
+                    val active =
                         WallpaperManager.getInstance(this@MainActivity)
-
-                    val active = manager.wallpaperInfo
+                            .wallpaperInfo
 
                     statusText.text = when {
                         active == null ->
@@ -68,22 +80,28 @@ class MainActivity : Activity() {
                             "Universal Replicant Engine is ACTIVE!"
 
                         else ->
-                            "A different live wallpaper is active:\n${active.packageName}"
+                            "Another live wallpaper is active.\nPackage: ${active.packageName}\nService: ${active.serviceName}"
                     }
-
-                    Toast.makeText(
-                        this@MainActivity,
-                        statusText.text,
-                        Toast.LENGTH_LONG
-                    ).show()
 
                 } catch (e: Exception) {
                     statusText.text =
-                        "Wallpaper check failed: ${e.message}"
+                        "Check failed: ${e.message}"
                 }
             }
         })
 
         setContentView(layout)
+    }
+
+    private fun openIntent(intent: Intent) {
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(
+                this,
+                "Could not open wallpaper screen: ${e.message}",
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 }
