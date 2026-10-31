@@ -14,7 +14,7 @@ class MainActivity : Activity() {
 
     private lateinit var statusText: TextView
 
-    private val wallpaperComponent
+    private val wallpaperComponent: ComponentName
         get() = ComponentName(
             this,
             ReplicantWallpaperService::class.java
@@ -29,7 +29,7 @@ class MainActivity : Activity() {
         }
 
         statusText = TextView(this).apply {
-            text = "Universal Replicant Engine\n\n"
+            text = "Universal Replicant Engine\n\nCheck whether your wallpaper is active."
             textSize = 18f
         }
 
@@ -51,17 +51,24 @@ class MainActivity : Activity() {
 
         layout.addView(Button(this).apply {
             text = "Check active wallpaper"
+
             setOnClickListener {
                 try {
-                    val manager = WallpaperManager.getInstance(this@MainActivity)
+                    val manager =
+                        WallpaperManager.getInstance(this@MainActivity)
+
                     val active = manager.wallpaperInfo
 
-                    statusText.text = if (active == null) {
-                        "No live wallpaper is currently active."
-                    } else if (active.component == wallpaperComponent) {
-                        "Universal Replicant Engine is ACTIVE."
-                    } else {
-                        "Another live wallpaper is active:\n${active.serviceName}"
+                    statusText.text = when {
+                        active == null ->
+                            "No live wallpaper is currently active."
+
+                        active.packageName == wallpaperComponent.packageName &&
+                        active.serviceName == wallpaperComponent.className ->
+                            "Universal Replicant Engine is ACTIVE!"
+
+                        else ->
+                            "A different live wallpaper is active:\n${active.packageName}"
                     }
 
                     Toast.makeText(
@@ -72,18 +79,11 @@ class MainActivity : Activity() {
 
                 } catch (e: Exception) {
                     statusText.text =
-                        "Could not check wallpaper: ${e.message}"
+                        "Wallpaper check failed: ${e.message}"
                 }
             }
         })
 
         setContentView(layout)
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (::statusText.isInitialized) {
-            statusText.text = "Universal Replicant Engine\n\nTap Check active wallpaper."
-        }
     }
 }
