@@ -12,8 +12,13 @@ import android.widget.Toast
 
 class MainActivity : Activity() {
 
-    private val wallpaperAction =
-        "android.service.wallpaper.WallpaperService"
+    private lateinit var statusText: TextView
+
+    private val wallpaperComponent
+        get() = ComponentName(
+            this,
+            ReplicantWallpaperService::class.java
+        )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -23,55 +28,62 @@ class MainActivity : Activity() {
             setPadding(32, 48, 32, 32)
         }
 
-        layout.addView(TextView(this).apply {
-            text = "Universal Replicant Engine\n\nWallpaper service diagnostic."
+        statusText = TextView(this).apply {
+            text = "Universal Replicant Engine\n\n"
             textSize = 18f
+        }
+
+        layout.addView(statusText)
+
+        layout.addView(Button(this).apply {
+            text = "Preview / set wallpaper"
+            setOnClickListener {
+                val intent = Intent(
+                    WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER
+                ).putExtra(
+                    WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
+                    wallpaperComponent
+                )
+
+                startActivity(intent)
+            }
         })
 
         layout.addView(Button(this).apply {
-            text = "Check and preview wallpaper"
-
+            text = "Check active wallpaper"
             setOnClickListener {
-                val service = ComponentName(
-                    this@MainActivity,
-                    ReplicantWallpaperService::class.java
-                )
+                try {
+                    val manager = WallpaperManager.getInstance(this@MainActivity)
+                    val active = manager.wallpaperInfo
 
-                val serviceIntent = Intent(wallpaperAction)
-                    .setComponent(service)
+                    statusText.text = if (active == null) {
+                        "No live wallpaper is currently active."
+                    } else if (active.component == wallpaperComponent) {
+                        "Universal Replicant Engine is ACTIVE."
+                    } else {
+                        "Another live wallpaper is active:\n${active.serviceName}"
+                    }
 
-                val found = packageManager.resolveService(
-                    serviceIntent,
-                    0
-                )
-
-                if (found == null) {
                     Toast.makeText(
                         this@MainActivity,
-                        "ERROR: Android cannot find the wallpaper service.",
+                        statusText.text,
                         Toast.LENGTH_LONG
                     ).show()
-                } else {
-                    try {
-                        val previewIntent = Intent(
-                            WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER
-                        ).putExtra(
-                            WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-                            service
-                        )
 
-                        startActivity(previewIntent)
-                    } catch (e: Exception) {
-                        Toast.makeText(
-                            this@MainActivity,
-                            "Preview error: ${e.message}",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
+                } catch (e: Exception) {
+                    statusText.text =
+                        "Could not check wallpaper: ${e.message}"
                 }
             }
         })
 
         setContentView(layout)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::statusText.isInitialized) {
+            statusText.text = "Universal Replicant Engine\n\nTap Check active wallpaper."
+        }
     }
 }
