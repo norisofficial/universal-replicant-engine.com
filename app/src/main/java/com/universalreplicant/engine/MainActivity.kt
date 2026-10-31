@@ -8,7 +8,6 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 
 class MainActivity : Activity() {
 
@@ -29,63 +28,37 @@ class MainActivity : Activity() {
         }
 
         statusText = TextView(this).apply {
-            text = "Universal Replicant Engine\n\nChoose how to open your wallpaper."
-            textSize = 18f
+            text = "UNIVERSAL REPLICANT ENGINE\n\nRun the wallpaper diagnostic."
+            textSize = 17f
         }
 
         layout.addView(statusText)
 
         layout.addView(Button(this).apply {
-            text = "Open my wallpaper preview"
+            text = "RUN WALLPAPER DIAGNOSTIC"
 
             setOnClickListener {
-                val intent = Intent(
-                    WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER
-                ).putExtra(
-                    WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-                    wallpaperComponent
-                )
-
-                openIntent(intent)
+                runDiagnostic()
             }
         })
 
         layout.addView(Button(this).apply {
-            text = "Open system live wallpaper chooser"
-
-            setOnClickListener {
-                val intent = Intent(
-                    WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER
-                )
-
-                openIntent(intent)
-            }
-        })
-
-        layout.addView(Button(this).apply {
-            text = "Check active wallpaper"
+            text = "OPEN MY WALLPAPER PREVIEW"
 
             setOnClickListener {
                 try {
-                    val active =
-                        WallpaperManager.getInstance(this@MainActivity)
-                            .wallpaperInfo
+                    val intent = Intent(
+                        WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER
+                    ).putExtra(
+                        WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
+                        wallpaperComponent
+                    )
 
-                    statusText.text = when {
-                        active == null ->
-                            "No live wallpaper is currently active."
-
-                        active.packageName == wallpaperComponent.packageName &&
-                        active.serviceName == wallpaperComponent.className ->
-                            "Universal Replicant Engine is ACTIVE!"
-
-                        else ->
-                            "Another live wallpaper is active.\nPackage: ${active.packageName}\nService: ${active.serviceName}"
-                    }
+                    startActivity(intent)
 
                 } catch (e: Exception) {
                     statusText.text =
-                        "Check failed: ${e.message}"
+                        "Could not open preview:\n${e.message}"
                 }
             }
         })
@@ -93,15 +66,30 @@ class MainActivity : Activity() {
         setContentView(layout)
     }
 
-    private fun openIntent(intent: Intent) {
+    private fun runDiagnostic() {
         try {
-            startActivity(intent)
+            val manager = WallpaperManager.getInstance(this)
+
+            val supported = manager.isWallpaperSupported()
+            val allowed = manager.isSetWallpaperAllowed()
+            val active = manager.wallpaperInfo
+
+            val activeText = if (active == null) {
+                "No live wallpaper reported."
+            } else {
+                "Package: ${active.packageName}\n" +
+                "Service: ${active.serviceName}"
+            }
+
+            statusText.text =
+                "WALLPAPER DIAGNOSTIC\n\n" +
+                "Wallpaper supported: $supported\n\n" +
+                "Wallpaper changes allowed: $allowed\n\n" +
+                "Currently active:\n$activeText"
+
         } catch (e: Exception) {
-            Toast.makeText(
-                this,
-                "Could not open wallpaper screen: ${e.message}",
-                Toast.LENGTH_LONG
-            ).show()
+            statusText.text =
+                "DIAGNOSTIC FAILED\n\n${e.javaClass.simpleName}\n${e.message}"
         }
     }
 }
